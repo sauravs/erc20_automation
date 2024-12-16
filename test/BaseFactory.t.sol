@@ -18,7 +18,8 @@ contract BaseFactoryTest is Test {
     address public owner;
     address public feeCollector;
     address public user;
-    uint256 public deploymentFee = 1;
+    address public user2;
+    uint256 public deploymentFee = 2;
 
     event ContractDeployed(address contractAddress);
 
@@ -26,6 +27,7 @@ contract BaseFactoryTest is Test {
         owner = makeAddr("owner");
         feeCollector = makeAddr("feeCollector");
         user = makeAddr("user");
+        user2 = makeAddr("user2");
         
         vm.startPrank(owner);                 //@audit : only owner can deploy the contract?
         feeToken = new MockERC20();
@@ -74,36 +76,122 @@ contract BaseFactoryTest is Test {
         // Assertions
         assertEq(factory.getDeployedContracts().length, 1);
         assertEq(feeToken.balanceOf(feeCollector), deploymentFee);
+        assertEq(feeToken.balanceOf(user), 100 - deploymentFee);
     }
 
-    // function testUpdateDeploymentFee() public {
-    //     uint256 newFee = 200 ether;
-    //     vm.prank(owner);
-    //     factory.updateDeploymentFee(newFee);
-    //     assertEq(factory.deploymentFee(), newFee);
-    // }
+    function testUpdateDeploymentFee() public {
+        uint256 newFee = 2;
+        vm.prank(owner);
+        factory.updateDeploymentFee(newFee);
+        assertEq(factory.deploymentFee(), newFee);
+    }
 
-    // function testUpdateFeeToken() public {
-    //     address newToken = address(new MockERC20());
-    //     vm.prank(owner);
-    //     factory.updateFeeToken(IERC20(newToken));
-    //     assertEq(address(factory.feeToken()), newToken);
-    // }
+    function testUpdateFeeToken() public {
+        address newToken = address(new MockERC20());
+        vm.prank(owner);
+        factory.updateFeeToken(IERC20(newToken));
+        assertEq(address(factory.feeToken()), newToken);
+    }
 
-    // function testUpdateFeeCollector() public {
-    //     address newCollector = makeAddr("newCollector");
-    //     vm.prank(owner);
-    //     factory.updateFeeCollector(newCollector);
-    //     assertEq(factory.feeCollector(), newCollector);
-    // }
+    function testUpdateFeeCollector() public {
+        address newCollector = makeAddr("newCollector");
+        vm.prank(owner);
+        factory.updateFeeCollector(newCollector);
+        assertEq(factory.feeCollector(), newCollector);
+    }
 
-    // // Revert Tests
+
+      function testDeployedContractFeatures() public {
+
+        vm.startPrank(user);
+        feeToken.approve(address(factory), deploymentFee);
+        
+        factory.deployContract(
+            user,
+            "Test Token",
+            "TEST",
+            true,
+            true,
+            true,
+            1000 
+        );
+        
+        address deployedAddr = factory.getDeployedContracts()[0];
+        FeatureBasedContract deployedContract = FeatureBasedContract(deployedAddr);
+        
+        (bool isMintable, bool isBurnable, bool isPausable) = deployedContract.features();
+        assertTrue(isMintable);
+        assertTrue(isBurnable);
+        assertTrue(isPausable);
+        vm.stopPrank();
+
+        // Assertions
+        assertEq(factory.getDeployedContracts().length, 1);
+        assertEq(feeToken.balanceOf(feeCollector), deploymentFee);
+        assertEq(feeToken.balanceOf(user), 100 - deploymentFee);
+
+        // assert total supply is equal to premint amount
+
+        assertEq(deployedContract.totalSupply(), 1000);
+
+        // assert initial owner is user
+
+        assertEq(deployedContract.owner(), user);
+
+
+        // assert that preminted amount is transferred to user
+
+        assertEq(deployedContract.balanceOf(user), 1000);
+
+        // assert that user can transfer tokens to another address
+        
+        vm.prank(user);
+        deployedContract.transfer(user2, 100);
+        assertEq(deployedContract.balanceOf(user), 900);
+        assertEq(deployedContract.balanceOf(user2), 100);
+
+
+
+
+    }
+
+
+
+    
+    function testRevertWhenNonOwnerUpdatesDeploymentFee() public {
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        factory.updateDeploymentFee(200);
+    }
+
+
+      function testRevertWhenNonOwnerUpdatesFeeToken() public {
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        factory.updateFeeToken(IERC20(address(0)));
+    }
+
+    function testRevertWhenNonOwnerUpdatesFeeCollector() public {
+        vm.prank(user);
+           vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        factory.updateFeeCollector(address(0));
+    }
 
     // function testRevertWhenInsufficientAllowance() public {
     //     vm.startPrank(user);
-    //     feeToken.approve(address(factory), DEPLOYMENT_FEE - 1);
+    //     feeToken.approve(address(factory), deploymentFee - 1);
+
+    //     // vm.expectPartialRevert(feeToken.ERC20InsufficientAllowance.selector);
+
+    //     vm.expectRevert(abi.encodeWithSelector(ERC20.ERC20InsufficientAllowance.selector, user ,deploymentFee,  deploymentFee - 1));
         
-    //     vm.expectRevert("ERC20: insufficient allowance");
+    // //    vm.expectRevert(abi.encodeWithSelector(ERC20.ERC20InsufficientAllowance.selector, user ,deploymentFee,  deploymentFee - 1));
+
+       
+
+    //    //ERC20InsufficientAllowance(spender, currentAllowance, value);
+    //    //error OwnableUnauthorizedAccount(address account);
+        
     //     factory.deployContract(
     //         user,
     //         "Test Token",
@@ -118,7 +206,7 @@ contract BaseFactoryTest is Test {
 
     // function testRevertWhenInsufficientBalance() public {
     //     vm.startPrank(user);
-    //     feeToken.approve(address(factory), DEPLOYMENT_FEE);
+    //     feeToken.approve(address(factory), deploymentFee);
         
     //     vm.expectRevert("ERC20: transfer amount exceeds balance");
     //     factory.deployContract(
@@ -133,47 +221,5 @@ contract BaseFactoryTest is Test {
     //     vm.stopPrank();
     // }
 
-    // function testRevertWhenNonOwnerUpdatesDeploymentFee() public {
-    //     vm.prank(user);
-    //     vm.expectRevert("Ownable: caller is not the owner");
-    //     factory.updateDeploymentFee(200 ether);
-    // }
 
-    // function testRevertWhenNonOwnerUpdatesFeeToken() public {
-    //     vm.prank(user);
-    //     vm.expectRevert("Ownable: caller is not the owner");
-    //     factory.updateFeeToken(IERC20(address(0)));
-    // }
-
-    // function testRevertWhenNonOwnerUpdatesFeeCollector() public {
-    //     vm.prank(user);
-    //     vm.expectRevert("Ownable: caller is not the owner");
-    //     factory.updateFeeCollector(address(0));
-    // }
-
-    // function testDeployedContractFeatures() public {
-    //     feeToken.mint(user, DEPLOYMENT_FEE);
-        
-    //     vm.startPrank(user);
-    //     feeToken.approve(address(factory), DEPLOYMENT_FEE);
-        
-    //     factory.deployContract(
-    //         user,
-    //         "Test Token",
-    //         "TEST",
-    //         true,
-    //         true,
-    //         true,
-    //         1000 ether
-    //     );
-        
-    //     address deployedAddr = factory.getDeployedContracts()[0];
-    //     FeatureBasedContract deployedContract = FeatureBasedContract(deployedAddr);
-        
-    //     (bool isMintable, bool isBurnable, bool isPausable) = deployedContract.features();
-    //     assertTrue(isMintable);
-    //     assertTrue(isBurnable);
-    //     assertTrue(isPausable);
-    //     vm.stopPrank();
-    // }
 }

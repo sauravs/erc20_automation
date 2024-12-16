@@ -5,12 +5,18 @@ import {FeatureBasedContract} from "./demo2.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+
+// @audit ...as per current configuration,there is no MAXIMUM supply.Should be their,other wise owner can mint any amount of token.Not practical.
+
+
+
+
 contract BaseFactory is Ownable{
     address[] public deployedContracts;
     IERC20 public feeToken;
     uint256 public deploymentFee;
-    address feeCollector;
-
+   // address feeCollector;               // @audit add visibility -> public
+    address public feeCollector;
     event ContractDeployed(address contractAddress);
 
     constructor(
