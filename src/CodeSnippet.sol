@@ -14,10 +14,9 @@ import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20P
 /// @notice ERC20 token with fully configurable features including minting and max supply
 /// @dev Inherits from ERC20, ERC20Burnable, ERC20Pausable and Ownable
 contract BasicFeatureContract is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
-
     /// @notice Maximum possible token supply, zero means unlimited
     uint256 public immutable maxSupply;
-    
+
     /// @notice Struct for features, packed into single storage slot
     struct Features {
         bool isMintable;
@@ -56,24 +55,23 @@ contract BasicFeatureContract is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
         uint256 _maxSupply
     ) ERC20(name, symbol) Ownable(initialOwner) {
         // Validate max supply configuration
-        if(_hasMaxSupply) {
-            if(_maxSupply == 0 || _premintAmount > _maxSupply) {
+        if (_hasMaxSupply) {
+            if (_maxSupply == 0 || _premintAmount > _maxSupply) {
                 revert InvalidMaxSupplyConfig();
             }
         }
-        
+
         features = Features({
             isMintable: _isMintable,
             isBurnable: _isBurnable,
             isPausable: _isPausable,
             hasMaxSupply: _hasMaxSupply
         });
-        
-        
-        // If hasMaxSupply is false, set maxSupply to type(uint256).max
+
+        // if hasMaxSupply is false, set maxSupply to type(uint256).max
         maxSupply = _hasMaxSupply ? _maxSupply : type(uint256).max;
-        
-        if(_premintAmount > 0) {
+
+        if (_premintAmount > 0) {
             _mint(initialOwner, _premintAmount);
         }
     }
@@ -82,21 +80,21 @@ contract BasicFeatureContract is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     /// @param to Recipient of minted tokens
     /// @param amount Amount to mint
     function mint(address to, uint256 amount) external onlyOwner {
-        if(!features.isMintable) {
+        if (!features.isMintable) {
             revert FeatureNotEnabled("mint");
         }
-        
-        if(features.hasMaxSupply && totalSupply() + amount > maxSupply) {
+
+        if (features.hasMaxSupply && totalSupply() + amount > maxSupply) {
             revert MaxSupplyExceeded(totalSupply() + amount, maxSupply);
         }
-        
+
         _mint(to, amount);
     }
 
     /// @notice Burns tokens if burning is enabled
     /// @param amount Amount to burn
     function burn(uint256 amount) public override {
-        if(!features.isBurnable) {
+        if (!features.isBurnable) {
             revert FeatureNotEnabled("burn");
         }
         super.burn(amount);
@@ -104,7 +102,7 @@ contract BasicFeatureContract is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /// @notice Pauses token transfers if pausable is enabled
     function pause() external onlyOwner {
-        if(!features.isPausable) {
+        if (!features.isPausable) {
             revert FeatureNotEnabled("pause");
         }
         _pause();
@@ -112,7 +110,7 @@ contract BasicFeatureContract is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /// @notice Unpauses token transfers if pausable is enabled
     function unpause() external onlyOwner {
-        if(!features.isPausable) {
+        if (!features.isPausable) {
             revert FeatureNotEnabled("pause");
         }
         _unpause();
@@ -120,19 +118,9 @@ contract BasicFeatureContract is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /// @notice Hook called before any transfer
     /// @dev Required override to handle pausable functionality
-   
 
-        function _update(
-        address from,
-        address to,
-        uint256 value
-    )
-        internal
-        virtual
-        override(ERC20, ERC20Pausable)
-      
-    {
-           if(!features.isPausable) {
+    function _update(address from, address to, uint256 value) internal virtual override(ERC20, ERC20Pausable) {
+        if (!features.isPausable) {
             revert FeatureNotEnabled("pause");
         }
         super._update(from, to, value);
@@ -149,11 +137,7 @@ contract BasicFeatureContract is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     function getFeatures() external view returns (Features memory) {
         return features;
     }
-
-
-      
 }
-
 
 /// @title Feature Contract with Permit Support
 /// @notice ERC20 token with permit functionality
@@ -196,15 +180,9 @@ contract FeaturePermit is BasicFeatureContract, ERC20Permit {
 
     /// @notice Internal update function required by ERC20
     /// @dev Overrides both BasicFeatureContract and ERC20
-    function _update(
-        address from,
-        address to,
-        uint256 value
-    ) internal virtual override(BasicFeatureContract, ERC20) {
+    function _update(address from, address to, uint256 value) internal virtual override(BasicFeatureContract, ERC20) {
         super._update(from, to, value);
     }
-
- 
 }
 
 /// @title Feature Contract with Flash Mint Support
@@ -247,15 +225,9 @@ contract FeatureFlashMint is BasicFeatureContract, ERC20FlashMint {
 
     /// @notice Internal update function required by ERC20
     /// @dev Overrides both BasicFeatureContract and ERC20FlashMint
-     function _update(
-        address from,
-        address to,
-        uint256 value
-    ) internal override(ERC20, BasicFeatureContract) {
+    function _update(address from, address to, uint256 value) internal override(ERC20, BasicFeatureContract) {
         super._update(from, to, value);
     }
-
-   
 }
 
 // /// @title Feature Contract with Flash Mint and Permit Support
@@ -299,30 +271,7 @@ contract FeatureFlashMintAndPermit is BasicFeatureContract, ERC20FlashMint, ERC2
 
     /// @notice Internal update function required by ERC20
     /// @dev Overrides BasicFeatureContract, ERC20FlashMint
-       function _update(
-        address from,
-        address to,
-        uint256 value
-    ) internal override(ERC20, BasicFeatureContract) {
+    function _update(address from, address to, uint256 value) internal override(ERC20, BasicFeatureContract) {
         super._update(from, to, value);
     }
-
- 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

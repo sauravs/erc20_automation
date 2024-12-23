@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.22;
+pragma solidity 0.8.22;
 
 import "forge-std/Test.sol";
 import "../src/BasicModuleFactory.sol";
@@ -28,16 +28,11 @@ contract BasicModuleFactoryTest is Test {
 
         vm.startPrank(owner);
         feeToken = new MockERC20();
-        factory = new BasicModuleFactory(
-            address(feeToken),
-            DEPLOYMENT_FEE,
-            feeCollector
-        );
+        factory = new BasicModuleFactory(address(feeToken), DEPLOYMENT_FEE, feeCollector);
         vm.stopPrank();
 
-     
-         // verify owner has 1000 fee tokens
-        
+        // verify owner has 1000 fee tokens
+
         assertEq(feeToken.balanceOf(owner), 1000);
 
         // fund user with some feetoken
@@ -45,44 +40,24 @@ contract BasicModuleFactoryTest is Test {
         vm.prank(owner);
         feeToken.transfer(user, 100);
         assertEq(feeToken.balanceOf(user), 100);
-
     }
 
     function testConstructorValidations() public {
         vm.expectRevert(BasicModuleFactory.InvalidAddress.selector);
-        new BasicModuleFactory(
-            address(0),
-            DEPLOYMENT_FEE,
-            feeCollector
-        );
+        new BasicModuleFactory(address(0), DEPLOYMENT_FEE, feeCollector);
 
         vm.expectRevert(BasicModuleFactory.InvalidAddress.selector);
-        new BasicModuleFactory(
-            address(feeToken),
-            DEPLOYMENT_FEE,
-            address(0)
-        );
+        new BasicModuleFactory(address(feeToken), DEPLOYMENT_FEE, address(0));
     }
 
     function testDeployContract() public {
         vm.startPrank(user);
         feeToken.approve(address(factory), DEPLOYMENT_FEE);
 
-
-        address deployedAddr = factory.deployContract(
-            user,
-            "Test Token",
-            "TEST",
-            true,
-            true,
-            true,
-            true,
-            100 ,                        
-            10000
-        );
+        address deployedAddr = factory.deployContract(user, "Test Token", "TEST", true, true, true, true, 100, 10000);
 
         BasicFeatureContract token = BasicFeatureContract(deployedAddr);
-        
+
         assertEq(token.name(), "Test Token");
         assertEq(token.symbol(), "TEST");
         assertEq(token.owner(), user);
@@ -90,24 +65,22 @@ contract BasicModuleFactoryTest is Test {
         assertEq(feeToken.balanceOf(user), 100 - DEPLOYMENT_FEE);
         assertEq(token.totalSupply(), 100);
         assertEq(token.maxSupply(), 10000);
-   
-        
-    BasicFeatureContract.Features memory features = token.getFeatures();
-    assertEq(features.isMintable, true);
-    assertEq(features.isBurnable, true); 
-    assertEq(features.isPausable, true);
-    assertEq(features.hasMaxSupply, true);
 
+        BasicFeatureContract.Features memory features = token.getFeatures();
+        assertEq(features.isMintable, true);
+        assertEq(features.isBurnable, true);
+        assertEq(features.isPausable, true);
+        assertEq(features.hasMaxSupply, true);
 
         vm.stopPrank();
 
-       // testing token related feature after new token is deployed
+        // testing token related feature after new token is deployed
 
-       // test mint new token
+        // test mint new token
 
-       vm.prank(user);
-       token.mint(user, 100);
-       assertEq(token.totalSupply(), 200);
+        vm.prank(user);
+        token.mint(user, 100);
+        assertEq(token.totalSupply(), 200);
 
         // test burn token
 
@@ -126,21 +99,19 @@ contract BasicModuleFactoryTest is Test {
         token.unpause();
         assertEq(token.paused(), false);
 
-
         // test mint token with max supply
         vm.prank(user);
         token.mint(user, 9900);
         assertEq(token.totalSupply(), 10000);
-
 
         // test mint token with max supply exceeded
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(BasicFeatureContract.MaxSupplyExceeded.selector, 10100, 10000));
         token.mint(user, 100);
 
-       // test transfer ownership
+        // test transfer ownership
 
-         vm.prank(user);
+        vm.prank(user);
         token.transferOwnership(owner);
         assertEq(token.owner(), owner);
 
@@ -150,14 +121,11 @@ contract BasicModuleFactoryTest is Test {
         token.renounceOwnership();
         assertEq(token.owner(), address(0));
 
-
         // test transfer function
 
         vm.prank(user);
         token.transfer(owner, 100);
         assertEq(token.balanceOf(owner), 100);
-
-
     }
 
     function testRevertOnMaxSupplyZero() public {
@@ -165,17 +133,7 @@ contract BasicModuleFactoryTest is Test {
         feeToken.approve(address(factory), DEPLOYMENT_FEE);
 
         vm.expectRevert(BasicModuleFactory.MaxSupplyTooLow.selector);
-        factory.deployContract(
-            user,
-            "Test Token",
-            "TEST",
-            true,
-            true,
-            true,
-            true,
-            0,
-            0
-        );
+        factory.deployContract(user, "Test Token", "TEST", true, true, true, true, 0, 0);
         vm.stopPrank();
     }
 
@@ -184,21 +142,9 @@ contract BasicModuleFactoryTest is Test {
         feeToken.approve(address(factory), DEPLOYMENT_FEE);
 
         vm.expectRevert(BasicModuleFactory.InitialSupplyExceedsMax.selector);
-        factory.deployContract(
-            user,
-            "Test Token",
-            "TEST",
-            true,
-            true,
-            true,
-            true,
-            1000 ,
-            100 
-        );
+        factory.deployContract(user, "Test Token", "TEST", true, true, true, true, 1000, 100);
         vm.stopPrank();
     }
-
-    
 
     function testUpdateDeploymentFee() public {
         uint256 newFee = 2 ether;
@@ -209,7 +155,7 @@ contract BasicModuleFactoryTest is Test {
 
     function testRevertUnauthorizedFeeUpdate() public {
         vm.prank(user);
-       vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
         factory.updateDeploymentFee(2 ether);
     }
 
@@ -243,29 +189,9 @@ contract BasicModuleFactoryTest is Test {
         vm.startPrank(user);
         feeToken.approve(address(factory), DEPLOYMENT_FEE * 2);
 
-        address token1 = factory.deployContract(
-            user,
-            "Token1",
-            "TK1",
-            true,
-            true,
-            true,
-            true,
-            100 ,
-            1000 
-        );
+        address token1 = factory.deployContract(user, "Token1", "TK1", true, true, true, true, 100, 1000);
 
-        address token2 = factory.deployContract(
-            user,
-            "Token2",
-            "TK2",
-            true,
-            true,
-            true,
-            true,
-            100,
-            1000 
-        );
+        address token2 = factory.deployContract(user, "Token2", "TK2", true, true, true, true, 100, 1000);
 
         address[] memory deployedTokens = factory.getDeployedContracts();
         assertEq(deployedTokens.length, 2);

@@ -6,18 +6,16 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {BasicFeatureContract} from "./CodeSnippet.sol";
 
-/// @title BasicModuleFactory - Factory contract for deploying ERC20 tokens with basic features 1)mint 2)burn 3)pause 4) basic access control 
+/// @title BasicModuleFactory - Factory contract for deploying ERC20 tokens with basic features 1)mint 2)burn 3)pause 4) basic access control
 
 /// @notice This contract allows users to deploy new ERC20 tokens with configurable features
-/// @dev Inherits from Ownable for access control
+/// @dev inherits from Ownable for access control
 contract BasicModuleFactory is Ownable {
-   
     using SafeERC20 for IERC20;
 
-    
     /// @notice Token used for paying deployment fees
     IERC20 public feeToken;
-    
+
     /// @notice Address that collects deployment fees
     uint256 public deploymentFee;
 
@@ -42,26 +40,20 @@ contract BasicModuleFactory is Ownable {
     /// @param contractAddress The address of the newly deployed contract
     event ContractDeployed(address indexed contractAddress);
 
-
     /// @notice Initializes the factory with required parameters
     /// @param _feeToken Address of the token used for deployment fees
     /// @param _deploymentFee Amount of tokens required for deployment
     /// @param _feeCollector Address that receives deployment fees
 
-    constructor(
-        address _feeToken,
-        uint256 _deploymentFee,
-        address _feeCollector
-    ) Ownable(msg.sender) {
-        if(_feeToken == address(0)) revert InvalidAddress();
-        if(_feeCollector == address(0)) revert InvalidAddress();
-        
+    constructor(address _feeToken, uint256 _deploymentFee, address _feeCollector) Ownable(msg.sender) {
+        if (_feeToken == address(0)) revert InvalidAddress();
+        if (_feeCollector == address(0)) revert InvalidAddress();
+
         feeToken = IERC20(_feeToken);
         deploymentFee = _deploymentFee;
         feeCollector = _feeCollector;
     }
 
-        
     /// @notice Deploys a new token contract with specified parameters
     /// @param _initialOwner Address that will own the deployed token
     /// @param _name Name of the token
@@ -84,9 +76,9 @@ contract BasicModuleFactory is Ownable {
         uint256 _premintAmount,
         uint256 _maxSupply
     ) external returns (address) {
-        if(_maxSupply == 0) revert MaxSupplyTooLow();
-        if(_premintAmount > _maxSupply) revert InitialSupplyExceedsMax();
-        
+        if (_maxSupply == 0) revert MaxSupplyTooLow();
+        if (_premintAmount > _maxSupply) revert InitialSupplyExceedsMax();
+
         BasicFeatureContract newContract = new BasicFeatureContract(
             _initialOwner,
             _name,
@@ -98,19 +90,19 @@ contract BasicModuleFactory is Ownable {
             _premintAmount,
             _maxSupply
         );
-        
-        if(!isContractDeployed(address(newContract))) {
+
+        if (!isContractDeployed(address(newContract))) {
             revert DeploymentFailed();
         }
-        
+
         feeToken.safeTransferFrom(msg.sender, feeCollector, deploymentFee);
-        
+
         deployedContracts.push(address(newContract));
         emit ContractDeployed(address(newContract));
-        
+
         return address(newContract);
     }
-   
+
     /// @notice Checks if a contract exists at the given address
     /// @param _contract Address to check
     /// @return bool True if contract exists, false otherwise
@@ -127,18 +119,17 @@ contract BasicModuleFactory is Ownable {
     /// @notice Updates the deployment fee
     /// @param _newFee New fee amount
     /// @dev Only callable by owner
-    
+
     function updateDeploymentFee(uint256 _newFee) external onlyOwner {
         deploymentFee = _newFee;
     }
-
 
     /// @notice Updates the fee token
     /// @param _newFeeToken New fee token address
     /// @dev Only callable by owner
 
     function updateFeeToken(IERC20 _newFeeToken) external onlyOwner {
-        if(address(_newFeeToken) == address(0)) revert InvalidAddress();
+        if (address(_newFeeToken) == address(0)) revert InvalidAddress();
         feeToken = _newFeeToken;
     }
 
@@ -146,15 +137,14 @@ contract BasicModuleFactory is Ownable {
     /// @param _newFeeCollector New fee collector address
     /// @dev Only callable by owner
 
-
     function updateFeeCollector(address _newFeeCollector) external onlyOwner {
-        if(_newFeeCollector == address(0)) revert InvalidAddress();
+        if (_newFeeCollector == address(0)) revert InvalidAddress();
         feeCollector = _newFeeCollector;
     }
 
     /// @notice Gets all deployed contract addresses
     /// @return Array of deployed contract addresses
-    
+
     function getDeployedContracts() external view returns (address[] memory) {
         return deployedContracts;
     }

@@ -12,51 +12,45 @@ import {FeatureFlashMint} from "./CodeSnippet.sol";
 /// @dev Inherits from Ownable for access control
 
 contract FlashMintFactory is Ownable {
-
     using SafeERC20 for IERC20;
 
     /// @notice Token used for paying deployment fees
-    IERC20 public  feeToken;
+    IERC20 public feeToken;
 
     /// @notice Address that collects deployment fees
-    address public  feeCollector;
-    
+    address public feeCollector;
+
     /// @notice Fee required to deploy a new token
     uint256 public deploymentFee;
 
     /// @notice Array of all deployed contract addresses
     /// @dev Made private as external access is provided through getter
     address[] private deployedContracts;
-    
-    /// @notice Error thrown when contract deployment fails
+
+    /// @notice Error thrown when contract deployment fail
     error DeploymentFailed();
     /// @notice Error thrown when max supply is set to zero
     error MaxSupplyTooLow();
     /// @notice Error thrown when initial supply exceeds max supply
     error InitialSupplyExceedsMax();
 
-      /// @notice Error thrown when zero address is provided
-      error InvalidAddress();
-    
-    
+    /// @notice Error thrown when zero address is provided
+    error InvalidAddress();
+
     /// @notice Emitted when a new contract is deployed
     /// @param contractAddress The address of the newly deployed contract
     event ContractDeployed(address indexed contractAddress);
-    
+
     /// @notice Initializes the factory with required parameters
     /// @param _feeToken Address of the token used for deployment fees
     /// @param _deploymentFee Amount of tokens required for deployment
     /// @param _feeCollector Address that receives deployment fees
-    constructor(
-        address _feeToken,
-        uint256 _deploymentFee,
-        address _feeCollector
-    ) Ownable(msg.sender) {
+    constructor(address _feeToken, uint256 _deploymentFee, address _feeCollector) Ownable(msg.sender) {
         feeToken = IERC20(_feeToken);
         deploymentFee = _deploymentFee;
         feeCollector = _feeCollector;
     }
-    
+
     /// @notice Deploys a new token contract with specified parameters
     /// @param _initialOwner Address that will own the deployed token
     /// @param _name Name of the token
@@ -78,9 +72,9 @@ contract FlashMintFactory is Ownable {
         uint256 _premintAmount,
         uint256 _maxSupply
     ) external returns (address) {
-        if(_maxSupply == 0) revert MaxSupplyTooLow();
-        if(_premintAmount > _maxSupply) revert InitialSupplyExceedsMax();
-        
+        if (_maxSupply == 0) revert MaxSupplyTooLow();
+        if (_premintAmount > _maxSupply) revert InitialSupplyExceedsMax();
+
         FeatureFlashMint newContract = new FeatureFlashMint(
             _initialOwner,
             _name,
@@ -92,19 +86,19 @@ contract FlashMintFactory is Ownable {
             _premintAmount,
             _maxSupply
         );
-        
-        if(!isContractDeployed(address(newContract))) {
+
+        if (!isContractDeployed(address(newContract))) {
             revert DeploymentFailed();
         }
-        
-       feeToken.safeTransferFrom(msg.sender, feeCollector, deploymentFee);
-        
+
+        feeToken.safeTransferFrom(msg.sender, feeCollector, deploymentFee);
+
         deployedContracts.push(address(newContract));
         emit ContractDeployed(address(newContract));
-        
+
         return address(newContract);
     }
-    
+
     /// @notice Checks if a contract exists at the given address
     /// @param _contract Address to check
     /// @return bool True if contract exists, false otherwise
@@ -116,7 +110,7 @@ contract FlashMintFactory is Ownable {
         }
         return size > 0;
     }
-    
+
     /// @notice Updates the deployment fee
     /// @param _newFee New fee amount
     /// @dev Only callable by owner
@@ -129,7 +123,7 @@ contract FlashMintFactory is Ownable {
     /// @dev Only callable by owner
 
     function updateFeeToken(IERC20 _newFeeToken) external onlyOwner {
-        if(address(_newFeeToken) == address(0)) revert InvalidAddress();
+        if (address(_newFeeToken) == address(0)) revert InvalidAddress();
         feeToken = _newFeeToken;
     }
 
@@ -138,11 +132,10 @@ contract FlashMintFactory is Ownable {
     /// @dev Only callable by owner
 
     function updateFeeCollector(address _newFeeCollector) external onlyOwner {
-        if(_newFeeCollector == address(0)) revert InvalidAddress();
+        if (_newFeeCollector == address(0)) revert InvalidAddress();
         feeCollector = _newFeeCollector;
     }
 
-    
     /// @notice Gets all deployed contract addresses
     /// @return Array of deployed contract addresses
     function getDeployedContracts() external view returns (address[] memory) {
