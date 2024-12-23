@@ -4,14 +4,15 @@ pragma solidity 0.8.22;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {FeaturePermit} from "./CodeSnippet.sol";
+import {FeatureFlashMintAndPermit} from "./CodeSnippet.sol";
 
-/// @title PermitFactory - Factory contract for deploying ERC20 tokens with basic features 1)mint 2)burn 3)pause 4) basic access control 5) GASSLESS permit
+/// @title PermitAndFMFactory - Factory contract for deploying ERC20 tokens with basic features 1)mint 2)burn 3)pause 4) basic access control 5)Gassless permit 6)Flash Mint
 
 /// @notice This contract allows users to deploy new ERC20 tokens with configurable features
 /// @dev Inherits from Ownable for access control
 
-contract PermitFactory is Ownable {
+contract PermitAndFMFactory is Ownable {
+
 
     using SafeERC20 for IERC20;
 
@@ -35,8 +36,8 @@ contract PermitFactory is Ownable {
     /// @notice Error thrown when initial supply exceeds max supply
     error InitialSupplyExceedsMax();
 
-    /// @notice Error thrown when zero address is provided
-    error InvalidAddress();
+      /// @notice Error thrown when zero address is provided
+      error InvalidAddress();
     
     
     /// @notice Emitted when a new contract is deployed
@@ -52,10 +53,6 @@ contract PermitFactory is Ownable {
         uint256 _deploymentFee,
         address _feeCollector
     ) Ownable(msg.sender) {
-
-       if (_feeToken == address(0)) revert InvalidAddress();
-       if (_feeCollector == address(0)) revert InvalidAddress();
-    
         feeToken = IERC20(_feeToken);
         deploymentFee = _deploymentFee;
         feeCollector = _feeCollector;
@@ -85,7 +82,7 @@ contract PermitFactory is Ownable {
         if(_maxSupply == 0) revert MaxSupplyTooLow();
         if(_premintAmount > _maxSupply) revert InitialSupplyExceedsMax();
         
-        FeaturePermit newContract = new FeaturePermit(
+        FeatureFlashMintAndPermit newContract = new FeatureFlashMintAndPermit(
             _initialOwner,
             _name,
             _symbol,

@@ -3,11 +3,14 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
 import "../src/PermitFactory.sol";
-import "../src/demo2.sol";
+import {BasicFeatureContract} from "../src/CodeSnippet.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MockERC20 is ERC20 {
-    constructor() ERC20("Mock Token", "MTK") {}
+    constructor() ERC20("MockFeetoken", "MTK") {
+        _mint(msg.sender, 1000);
+    }
+
     function mint(address to, uint256 amount) public {
         _mint(to, amount);
     }
@@ -17,132 +20,306 @@ contract PermitFactoryTest is Test {
     
     PermitFactory public factory;
     FeaturePermit public permitToken;
-    MockERC20 public feeToken;
-    address public factoryOwner;
-    address public feeCollector;
+    MockERC20 public feetoken;
+    address public owner;
     address public user;
-    address public user2;
-    uint256 public deploymentFee = 2;
+    address public feeCollector;
+    uint256 public constant DEPLOYMENT_FEE = 1;
 
 
-
+    
     address  public sender;                 // which will be used to sign the permit , he will not pay any gass fee
     address  public relayerAccount ;        // account which will pay the gas fee
     address  public receiver;               // account which is going to receive the tokens
     
     uint256 constant AMOUNT = 1000;
-    //uint256 constant FEE = 10;
-
     uint256 constant SENDER_PRIVATE_KEY = 111;
 
 
 
-
-    event ContractDeployed(address contractAddress);
-
     function setUp() public {
-        
-        factoryOwner = makeAddr("factoryOwner");
+        owner = makeAddr("owner");
         user = makeAddr("user");
-        user2 = makeAddr("user2");
         feeCollector = makeAddr("feeCollector");
-       
-        sender = vm.addr(SENDER_PRIVATE_KEY);
-        relayerAccount = makeAddr("relayerAccount");
         receiver = makeAddr("receiver");
+        relayerAccount = makeAddr("relayerAccount");
+        sender = vm.addr(SENDER_PRIVATE_KEY);
 
-        vm.startPrank(factoryOwner);                 //@audit : only owner can deploy the contract?
-        feeToken = new MockERC20();
+        vm.startPrank(owner);
+        feetoken = new MockERC20();
+        factory = new PermitFactory(
+            address(feetoken),
+            DEPLOYMENT_FEE,
+            feeCollector
+        );
+        vm.stopPrank();
 
-        factory = new PermitFactory(                // to be deploy by web3tech
-            address(feeToken),
-            deploymentFee,
+     
+         // verify owner has 1000 fee tokens
+        
+        assertEq(feetoken.balanceOf(owner), 1000);
+
+        // fund user with some feetoken
+
+        vm.prank(owner);
+        feetoken.transfer(user, 100);
+        assertEq(feetoken.balanceOf(user), 100);
+
+         // mint 10000 fee tokens to sender
+
+        feetoken.mint(sender, 10000);
+
+        // assert that sender has 10000 fee tokens
+
+        assertEq(feetoken.balanceOf(sender), 10000);
+
+
+          // deploy the permitToken Contract by any user(eg. sender)
+
+
+        vm.prank(sender);
+        feetoken.approve(address(factory), DEPLOYMENT_FEE);
+  
+         vm.prank(sender);
+        factory.deployContract(
+            sender,
+            "Test Token",
+            "TEST",
+            true,
+            true,
+            true,
+            true,
+            1000,
+            10000
+        );
+
+        address deployedAddr = factory.getDeployedContracts()[0];
+        FeaturePermit permitToken = FeaturePermit(deployedAddr);
+
+
+    }
+
+    function testConstructorValidations() public {
+        vm.expectRevert(PermitFactory.InvalidAddress.selector);
+        new PermitFactory(
+            address(0),
+            DEPLOYMENT_FEE,
             feeCollector
         );
 
-        vm.stopPrank();
-
-        // mint 10000 fee tokens to sender
-
-        feeToken.mint(sender, 10000);
-
-        // assert that user has 10000 fee tokens
-
-        assertEq(feeToken.balanceOf(sender), 10000);
+        vm.expectRevert(PermitFactory.InvalidAddress.selector);
+        new PermitFactory(
+            address(feetoken),
+            DEPLOYMENT_FEE,
+            address(0)
+        );
+    }
 
 
-        // deploy the permitToken Contract by any user(eg. sender)
+     function testDeployContract() public {
+        vm.startPrank(user);
+        feetoken.approve(address(factory), DEPLOYMENT_FEE);
 
 
-        vm.startPrank(sender);
-        feeToken.approve(address(factory), deploymentFee);
-  
-        vm.startPrank(sender);
-        factory.deployContract(
-            sender,
+        address deployedAddr = factory.deployContract(
+            user,
             "Test Token",
             "TEST",
             true,
             true,
             true,
-            1000
+            true,
+            100,                        
+            10000
         );
 
-        address deployedAddr = factory.getDeployedContracts()[0];
-        FeaturePermit permitToken = FeaturePermit(deployedAddr);
-
-    }
-
-
-     function testConstructor() public {
-
-        assertEq(address(factory.feeToken()), address(feeToken));
-        assertEq(factory.deploymentFee(), deploymentFee);
-        assertEq(factory.owner(), factoryOwner);
-    }
-
-
-    function testDeployContract() public {
-
+        FeaturePermit token = FeaturePermit(deployedAddr);
         
-        vm.startPrank(sender);
-        feeToken.approve(address(factory), deploymentFee);
-  
+        assertEq(token.name(), "Test Token");
+        assertEq(token.symbol(), "TEST");
+        assertEq(token.owner(), user);
+        assertEq(feetoken.balanceOf(feeCollector), 2*(DEPLOYMENT_FEE)); //since deployed two times
+        assertEq(feetoken.balanceOf(user), 100 - DEPLOYMENT_FEE);
+        assertEq(token.totalSupply(), 100);
+        assertEq(token.maxSupply(), 10000);
+
+        vm.stopPrank();
+
+       // testing token related feature after new token is deployed
+
+       // test mint new token
+
+       vm.prank(user);
+       token.mint(user, 100);
+       assertEq(token.totalSupply(), 200);
+
+        // test burn token
+
+        vm.prank(user);
+        token.burn(100);
+        assertEq(token.totalSupply(), 100);
+
+        // test pause token
+
+        vm.prank(user);
+        token.pause();
+        assertEq(token.paused(), true);
+
+        // test unpause token
+        vm.prank(user);
+        token.unpause();
+        assertEq(token.paused(), false);
+
+        // test mint token with max supply
+        vm.prank(user);
+        token.mint(user, 9900);
+        assertEq(token.totalSupply(), 10000);
+
+        // test mint token with max supply exceeded
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(BasicFeatureContract.MaxSupplyExceeded.selector, 10100, 10000));
+        token.mint(user, 100);
+
+       // test transfer ownership
+
+         vm.prank(user);
+        token.transferOwnership(owner);
+        assertEq(token.owner(), owner);
+
+        // test renounce ownership
+
+        vm.prank(owner);
+        token.renounceOwnership();
+        assertEq(token.owner(), address(0));
+
+        // test transfer function
+
+        vm.prank(user);
+        token.transfer(owner, 100);
+        assertEq(token.balanceOf(owner), 100);
+    }
+
+
+    function testRevertOnMaxSupplyZero() public {
+        vm.startPrank(user);
+        feetoken.approve(address(factory), DEPLOYMENT_FEE);
+
+        vm.expectRevert(PermitFactory.MaxSupplyTooLow.selector);
         factory.deployContract(
-            sender,
-            "Test Token",
+            user,
+            "Test token",
             "TEST",
             true,
             true,
             true,
-            1000
+            true,
+            0,
+            0
+        );
+        vm.stopPrank();
+    }
+
+    function testRevertOnInitialSupplyExceedsMax() public {
+        vm.startPrank(user);
+        feetoken.approve(address(factory), DEPLOYMENT_FEE);
+
+        vm.expectRevert(PermitFactory.InitialSupplyExceedsMax.selector);
+        factory.deployContract(
+            user,
+            "Test token",
+            "TEST",
+            true,
+            true,
+            true,
+            true,
+            1000 ,
+            100 
+        );
+        vm.stopPrank();
+    }
+
+    
+
+    function testUpdateDeploymentFee() public {
+        uint256 newFee = 2 ether;
+        vm.prank(owner);
+        factory.updateDeploymentFee(newFee);
+        assertEq(factory.deploymentFee(), newFee);
+    }
+
+    function testRevertUnauthorizedFeeUpdate() public {
+        vm.prank(user);
+       vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        factory.updateDeploymentFee(2 ether);
+    }
+
+    function testUpdateFeetoken() public {
+        address newtoken = address(new MockERC20());
+        vm.prank(owner);
+        factory.updateFeeToken(IERC20(newtoken));
+        assertEq(address(factory.feeToken()), newtoken);
+    }
+
+    function testRevertUpdateFeetokenZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(PermitFactory.InvalidAddress.selector);
+        factory.updateFeeToken(IERC20(address(0)));
+    }
+
+    function testUpdateFeeCollector() public {
+        address newCollector = makeAddr("newCollector");
+        vm.prank(owner);
+        factory.updateFeeCollector(newCollector);
+        assertEq(factory.feeCollector(), newCollector);
+    }
+
+    function testRevertUpdateFeeCollectorZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(PermitFactory.InvalidAddress.selector);
+        factory.updateFeeCollector(address(0));
+    }
+
+    function testGetDeployedContracts() public {
+        vm.startPrank(user);
+        feetoken.approve(address(factory), DEPLOYMENT_FEE * 2);
+
+        address token1 = factory.deployContract(
+            user,
+            "token1",
+            "TK1",
+            true,
+            true,
+            true,
+            true,
+            100 ,
+            1000 
         );
 
+        address token2 = factory.deployContract(
+            user,
+            "token2",
+            "TK2",
+            true,
+            true,
+            true,
+            true,
+            100,
+            1000 
+        );
+
+        address[] memory deployedtokens = factory.getDeployedContracts();
+        assertEq(deployedtokens.length, 3);  // +1 from setup
+        assertEq(deployedtokens[1], token1);
+        assertEq(deployedtokens[2], token2);
         vm.stopPrank();
-
-        address deployedAddr = factory.getDeployedContracts()[0];
-        FeaturePermit permitToken = FeaturePermit(deployedAddr);
-
-        assertEq(permitToken.name(), "Test Token");
-        assertEq(permitToken.symbol(), "TEST");
-        assertEq(permitToken.totalSupply(), 1000);
-        assertEq(permitToken.owner(), sender);
-
-        // verify fee transfer  
-
-        assertEq(feeToken.balanceOf(feeCollector), 2*(deploymentFee));  // since so far deployed two times once in the setup and once in this function
-
-        assertEq(feeToken.balanceOf(sender), 10000 - 2*(deploymentFee));  // 10000 - 2*(deploymentFee) = 9996
-
     }
 
 
- function testPermitFunctionality() public {
+    function testPermitFunctionality() public {
         // Deploy token
         vm.startPrank(sender);
-        feeToken.approve(address(factory), deploymentFee);
+        feetoken.approve(address(factory), DEPLOYMENT_FEE);
         
-        vm.startPrank(sender);
         factory.deployContract(
             sender,
             "Test Token",
@@ -150,7 +327,9 @@ contract PermitFactoryTest is Test {
             true,
             true,
             true,
-            100000
+            true,
+            1000,
+            10000
         );
         
         address deployedAddr = factory.getDeployedContracts()[0];
@@ -158,6 +337,7 @@ contract PermitFactoryTest is Test {
         vm.stopPrank();
 
         // Setup permit parameters
+        address spender = makeAddr("spender"); 
         uint256 deadline = block.timestamp + 60;
         uint256 amount = 100;
         
@@ -184,7 +364,7 @@ contract PermitFactoryTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(SENDER_PRIVATE_KEY, digest);
 
         // execute permit
-        vm.prank(relayerAccount);
+        vm.prank(sender);
         permitToken.permit(sender, relayerAccount, amount, deadline, v, r, s);
 
         // verify permit
@@ -204,58 +384,6 @@ contract PermitFactoryTest is Test {
         assertEq(permitToken.balanceOf(sender), 1000 - amount);
     }
 
-    function _getPermitTypedDataHash(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 nonce,
-        uint256 deadline
-    ) internal view returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                permitToken.DOMAIN_SEPARATOR(),
-                keccak256(
-                    abi.encode(
-                        keccak256(
-                            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
-                        ),
-                        owner,
-                        spender,
-                        value,
-                        nonce,
-                        deadline
-                    )
-                )
-            )
-        );
-    }
 
-
-  
-   function testRevertWhenNonOwnerUpdatesDeploymentFee() public {
-        vm.startPrank(user);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
-        factory.updateDeploymentFee(200);
-        vm.stopPrank();
-    }
-
-
-      function testRevertWhenNonOwnerUpdatesFeeToken() public {
-        vm.startPrank(user);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
-        factory.updateFeeToken(IERC20(address(0)));
-        vm.stopPrank();
-    }
-
-    function testRevertWhenNonOwnerUpdatesFeeCollector() public {
-        vm.startPrank(user);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
-        factory.updateFeeCollector(address(0));
-        vm.stopPrank();
-    }
-
-   
-  
 
 }

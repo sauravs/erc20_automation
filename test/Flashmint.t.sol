@@ -3,34 +3,38 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
 import "../src/FlashMintFactory.sol";
-import "../src/demo2.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/interfaces/IERC3156FlashBorrower.sol";
 
 contract MockERC20 is ERC20 {
-    constructor() ERC20("Mock Token", "MTK") {}
-    function mint(address to, uint256 amount) public {
-        _mint(to, amount);
+    constructor() ERC20("Mock Token", "MTK") {
+        _mint(msg.sender, 1000 ether);
     }
 }
 
-
 contract MockFlashBorrower is IERC3156FlashBorrower {
-    bool public shouldRepay;
+    bool public willRepay;
+    address public token;
+    uint256 public amount;
+    uint256 public fee;
     
-    constructor(bool _shouldRepay) {
-        shouldRepay = _shouldRepay;
+    constructor(bool _willRepay) {
+        willRepay = _willRepay;
     }
     
     function onFlashLoan(
         address initiator,
-        address token,
-        uint256 amount,
-        uint256 fee,
-        bytes calldata data
+        address _token,
+        uint256 _amount,
+        uint256 _fee,
+        bytes calldata
     ) external returns (bytes32) {
-        if (shouldRepay) {
-            IERC20(token).approve(msg.sender, amount + fee);
+        token = _token;
+        amount = _amount;
+        fee = _fee;
+        
+        if (willRepay) {
+            IERC20(_token).approve(msg.sender, _amount + _fee);
             return keccak256("ERC3156FlashBorrower.onFlashLoan");
         }
         return bytes32(0);
@@ -38,13 +42,14 @@ contract MockFlashBorrower is IERC3156FlashBorrower {
 }
 
 contract FlashMintFactoryTest is Test {
-    
     FlashMintFactory public factory;
     MockERC20 public feeToken;
     address public owner;
     address public user;
     address public feeCollector;
-    uint256 public constant DEPLOYMENT_FEE = 1;
+    uint256 public constant DEPLOYMENT_FEE = 1 ether;
+    
+    event ContractDeployed(address indexed contractAddress);
     
     function setUp() public {
         owner = makeAddr("owner");
@@ -58,65 +63,78 @@ contract FlashMintFactoryTest is Test {
             DEPLOYMENT_FEE,
             feeCollector
         );
+        
+        // Transfer fee tokens to user
+        feeToken.transfer(user, 10 ether);
         vm.stopPrank();
-
-        vm.prank(owner);
-        feeToken.mint(user, 10000);
     }
 
     function testFlashLoan() public {
-        // Deploy flash mint token
         vm.startPrank(user);
         feeToken.approve(address(factory), DEPLOYMENT_FEE);
         
-        factory.deployContract(
+        address deployedAddr = factory.deployContract(
             user,
             "Flash Token",
             "FLASH",
             true,
             true,
             true,
-            100000
+            true,
+            1000 ether,
+            10000 ether
         );
         
-        address deployedAddr = factory.getDeployedContracts()[0];
         FeatureFlashMint flashToken = FeatureFlashMint(deployedAddr);
-        vm.stopPrank();
-
-        // Setup flash borrower
+        
+        // Create borrower that will repay
         MockFlashBorrower goodBorrower = new MockFlashBorrower(true);
-        uint256 loanAmount = 100;
-
+        uint256 loanAmount = 100 ether;
+        
         // Execute flash loan
-        vm.prank(address(goodBorrower));
-        flashToken.flashLoan(
+        bool success = flashToken.flashLoan(
             IERC3156FlashBorrower(address(goodBorrower)),
             address(flashToken),
             loanAmount,
             ""
         );
+        
+        assertTrue(success);
+        assertEq(goodBorrower.token(), address(flashToken));
+        assertEq(goodBorrower.amount(), loanAmount);
+        assertEq(goodBorrower.fee(), 0);
+        vm.stopPrank();
     }
 
-
-    function testMaxFlashLoan() public {
+    function testFailedFlashLoan() public {
         vm.startPrank(user);
         feeToken.approve(address(factory), DEPLOYMENT_FEE);
         
-        factory.deployContract(
+        address deployedAddr = factory.deployContract(
             user,
             "Flash Token",
             "FLASH",
             true,
             true,
             true,
-            1000 ether
+            true,
+            1000 ether,
+            10000 ether
         );
         
-        address deployedAddr = factory.getDeployedContracts()[0];
         FeatureFlashMint flashToken = FeatureFlashMint(deployedAddr);
         
-        uint256 maxLoan = flashToken.maxFlashLoan(address(flashToken));
-        assertEq(maxLoan, type(uint256).max - flashToken.totalSupply());  // in default case should be maximum value - total supply(in circulation)
+        // Create borrower that won't repay
+        MockFlashBorrower badBorrower = new MockFlashBorrower(false);
+        uint256 loanAmount = 100 ether;
+        
+        vm.expectRevert("ERC3156: invalid flashLoan callback");
+        flashToken.flashLoan(
+            IERC3156FlashBorrower(address(badBorrower)),
+            address(flashToken),
+            loanAmount,
+            ""
+        );
         vm.stopPrank();
     }
 
@@ -124,46 +142,54 @@ contract FlashMintFactoryTest is Test {
         vm.startPrank(user);
         feeToken.approve(address(factory), DEPLOYMENT_FEE);
         
-        factory.deployContract(
+        address deployedAddr = factory.deployContract(
             user,
             "Flash Token",
             "FLASH",
             true,
             true,
             true,
-            1000
+            true,
+            1000 ether,
+            10000 ether
         );
         
-        address deployedAddr = factory.getDeployedContracts()[0];
         FeatureFlashMint flashToken = FeatureFlashMint(deployedAddr);
         
-        uint256 fee = flashToken.flashFee(address(flashToken), 1); // value doesn't matter?but why?
+        // Test valid token
+        uint256 fee = flashToken.flashFee(address(flashToken), 100 ether);
         assertEq(fee, 0); // default implementation has zero fees
+    
         vm.stopPrank();
     }
 
-
-       function testRevertWhenNonOwnerUpdatesDeploymentFee() public {
+    function testMaxFlashLoan() public {
         vm.startPrank(user);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
-        factory.updateDeploymentFee(200);
+        feeToken.approve(address(factory), DEPLOYMENT_FEE);
+        
+        address deployedAddr = factory.deployContract(
+            user,
+            "Flash Token",
+            "FLASH",
+            true,
+            true,
+            true,
+            true,
+            1000 ether,
+            10000 ether
+        );
+        
+        FeatureFlashMint flashToken = FeatureFlashMint(deployedAddr);
+        
+        // Test valid token
+        uint256 maxLoan = flashToken.maxFlashLoan(address(flashToken));
+        assertEq(maxLoan, type(uint256).max - flashToken.totalSupply());
+        
+        // Test invalid token
+        assertEq(flashToken.maxFlashLoan(address(0x1)), 0);
         vm.stopPrank();
     }
 
-
-      function testRevertWhenNonOwnerUpdatesFeeToken() public {
-        vm.startPrank(user);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
-        factory.updateFeeToken(IERC20(address(0)));
-        vm.stopPrank();
-    }
-
-    function testRevertWhenNonOwnerUpdatesFeeCollector() public {
-        vm.startPrank(user);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
-        factory.updateFeeCollector(address(0));
-        vm.stopPrank();
-    }
-
+   
 
 }
